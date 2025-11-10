@@ -1,0 +1,40 @@
+{
+  "name": "aws-bedrock-batch-inference-queue",
+  "version": "1.0.0",
+  "description": "TypeScript library for queuing and processing LLM tasks via AWS Bedrock batch inference jobs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "aws",
+    "bedrock",
+    "batch-inference",
+    "llm",
+    "queue",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@aws-sdk/client-bedrock": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.0.0",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/pg": "^8.10.9",
+    "@types/uuid": "^9.0.7",
+    "typescript": "^5.3.3"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
+
