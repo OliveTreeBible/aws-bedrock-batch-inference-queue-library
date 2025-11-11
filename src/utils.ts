@@ -75,8 +75,8 @@ export function formatBytes(bytes: number): string {
  * Default constants for AWS Bedrock batch inference limits
  */
 export const BEDROCK_LIMITS = {
-  MIN_RECORDS: 1000,
-  MAX_RECORDS: 50000,
+  MIN_RECORDS: 100,
+  MAX_RECORDS: 5000,
   MAX_FILE_SIZE_BYTES: 1024 * 1024 * 1024, // 1 GB
   MAX_JOB_SIZE_BYTES: 5 * 1024 * 1024 * 1024, // 5 GB
 } as const;

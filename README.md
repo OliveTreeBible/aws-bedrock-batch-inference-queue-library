@@ -67,7 +67,7 @@ const queue = new BedrockQueue({
   jobType: 'retrieval-summary',
 
   // Optional: Batching Configuration
-  batchSize: 1000, // Default: 1000 (AWS minimum)
+  batchSize: 100, // Default: 100 (AWS minimum)
   maxBatchSize: 50000, // Default: 50000 (AWS maximum)
   maxFileSizeBytes: 1024 * 1024 * 1024, // Default: 1GB
   maxJobSizeBytes: 5 * 1024 * 1024 * 1024, // Default: 5GB
@@ -157,7 +157,7 @@ for (let i = 0; i < 1500; i++) {
   });
 }
 
-// Queue will automatically flush at 1000 tasks
+// Queue will automatically flush at 100 tasks
 // Get the job ID from the event or manually flush remaining tasks
 const remainingJobId = await queue.flush();
 

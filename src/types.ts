@@ -26,7 +26,7 @@ export interface BedrockQueueConfig {
   jobType: 'retrieval-summary' | 'text-embed';
 
   // Batching Configuration
-  batchSize?: number; // Default: 1000 (AWS minimum)
+  batchSize?: number; // Default: 100 (AWS minimum)
   maxBatchSize?: number; // Default: 50000 (AWS maximum)
   maxFileSizeBytes?: number; // Default: 1GB
   maxJobSizeBytes?: number; // Default: 5GB
