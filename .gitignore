@@ -1,2 +1,3 @@
 /dist
 /node_modules
+/aws-bedrock-batch-inference-queue-1.0.0.tgz

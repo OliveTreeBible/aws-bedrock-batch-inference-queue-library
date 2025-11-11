@@ -19,6 +19,17 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OliveTreeBible/aws-bedrock-batch-inference-queue-library.git"
+  },
+  "bugs": {
+    "url": "https://github.com/OliveTreeBible/aws-bedrock-batch-inference-queue-library/issues"
+  },
+  "homepage": "https://github.com/OliveTreeBible/aws-bedrock-batch-inference-queue-library#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.0.0",
     "@aws-sdk/client-s3": "^3.0.0",
