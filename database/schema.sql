@@ -6,7 +6,19 @@ DROP TYPE IF EXISTS "public"."job_status";
 CREATE TYPE "public"."job_type" AS ENUM ('retrieval-summary', 'text-embed');
 
 -- Create job_status enum
-CREATE TYPE "public"."job_status" AS ENUM ('failed', 'completed', 'queued', 'in-process');
+-- Maps to AWS Bedrock ModelInvocationJobStatus values
+CREATE TYPE "public"."job_status" AS ENUM (
+  'queued',              -- SUBMITTED - Job has been submitted
+  'scheduled',           -- SCHEDULED - Job is scheduled to run
+  'validating',          -- VALIDATING - Job input is being validated
+  'in-process',          -- IN_PROGRESS - Job is currently processing
+  'partially-completed', -- PARTIALLY_COMPLETED - Job completed with some failures
+  'completed',           -- COMPLETED - Job completed successfully
+  'expired',             -- EXPIRED - Job expired before completion
+  'stopping',            -- STOPPING - Job is being stopped
+  'stopped',             -- STOPPED - Job was stopped
+  'failed'               -- FAILED - Job failed
+);
 
 -- Drop table if it exists
 DROP TABLE IF EXISTS "public"."batch_inference_jobs";

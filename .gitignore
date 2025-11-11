@@ -1,3 +1,4 @@
 /dist
 /node_modules
 /aws-bedrock-batch-inference-queue-*.tgz
+.DS_Store

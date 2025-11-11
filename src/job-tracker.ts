@@ -42,23 +42,67 @@ export class JobTracker extends EventEmitter {
 
   /**
    * Map AWS Bedrock job status to our JobStatus type
+   * Maps all ModelInvocationJobStatus values from AWS SDK
    */
   private mapBedrockStatusToJobStatus(
     bedrockStatus: ModelInvocationJobStatus | string | undefined
   ): JobStatus {
     switch (bedrockStatus) {
+      case 'Submitted':
+        return 'queued';
+      case 'Scheduled':
+        return 'scheduled';
+      case 'Validating':
+        return 'validating';
       case 'InProgress':
         return 'in-process';
+      case 'PartiallyCompleted':
+        return 'partially-completed';
       case 'Completed':
         return 'completed';
-      case 'Failed':
-      case 'Stopped':
+      case 'Expired':
+        return 'expired';
       case 'Stopping':
+        return 'stopping';
+      case 'Stopped':
+        return 'stopped';
+      case 'Failed':
         return 'failed';
-      case 'Submitted':
       default:
+        // Default to queued for unknown statuses
         return 'queued';
     }
+  }
+
+  /**
+   * Check if a job status is terminal (job will not transition to another status)
+   * Terminal states: completed, partially-completed, failed, expired, stopped
+   * Non-terminal states: queued, scheduled, validating, in-process, stopping
+   */
+  private isTerminalStatus(status: JobStatus): boolean {
+    return [
+      'completed',
+      'partially-completed',
+      'failed',
+      'expired',
+      'stopped',
+    ].includes(status);
+  }
+
+  /**
+   * Check if a job status indicates success (has results available)
+   * Success states: completed, partially-completed
+   */
+  private isSuccessStatus(status: JobStatus): boolean {
+    return status === 'completed' || status === 'partially-completed';
+  }
+
+  /**
+   * Check if a job status indicates failure (no results available)
+   * Failure states: failed, expired, stopped
+   */
+  private isFailureStatus(status: JobStatus): boolean {
+    return status === 'failed' || status === 'expired' || status === 'stopped';
   }
 
   /**
@@ -118,8 +162,10 @@ export class JobTracker extends EventEmitter {
       // Emit status change event
       this.emit('job-status-changed', jobId, status);
 
-      // Emit specific completion events
-      if (status === 'completed') {
+      // Emit specific completion events for terminal states
+      if (this.isSuccessStatus(status)) {
+        // Emit job-completed for both 'completed' and 'partially-completed'
+        // as both have results available (partially-completed may have some failures)
         const jobRecord = await this.databaseManager.getJob(jobId);
         const jobResult: JobResult = {
           jobId,
@@ -128,10 +174,16 @@ export class JobTracker extends EventEmitter {
           s3InputUri: jobRecord?.s3InputUri,
           s3OutputUri: outputS3Uri || jobRecord?.s3OutputUri,
           recordCount: jobRecord?.recordCount,
+          errorMessage: failureMessage,
         };
         this.emit('job-completed', jobId, jobResult);
-      } else if (status === 'failed') {
-        this.emit('job-failed', jobId, failureMessage || 'Job failed');
+      } else if (this.isFailureStatus(status)) {
+        // Emit job-failed for failed, expired, and stopped states
+        const errorMsg = failureMessage || 
+          (status === 'expired' ? 'Job expired before completion' :
+           status === 'stopped' ? 'Job was stopped' :
+           'Job failed');
+        this.emit('job-failed', jobId, errorMsg);
       }
     }
   }
@@ -171,8 +223,8 @@ export class JobTracker extends EventEmitter {
       try {
         const status = await this.pollJobStatus(jobId, jobArn);
 
-        // Stop polling if job is completed or failed
-        if (status === 'completed' || status === 'failed') {
+        // Stop polling if job has reached a terminal state
+        if (this.isTerminalStatus(status)) {
           this.stopPolling(jobId);
         }
       } catch (error) {
@@ -206,7 +258,8 @@ export class JobTracker extends EventEmitter {
   }
 
   /**
-   * Wait for job to complete (poll until completed or failed)
+   * Wait for job to reach a terminal state (poll until terminal status)
+   * Terminal states: completed, partially-completed, failed, expired, stopped
    */
   async waitForJobCompletion(
     jobId: string,
@@ -219,7 +272,8 @@ export class JobTracker extends EventEmitter {
     while (true) {
       const status = await this.pollJobStatus(jobId, jobArn);
 
-      if (status === 'completed' || status === 'failed') {
+      // Return when job reaches any terminal state
+      if (this.isTerminalStatus(status)) {
         return status;
       }
 

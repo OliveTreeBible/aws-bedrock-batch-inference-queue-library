@@ -45,9 +45,20 @@ export interface BedrockTask {
 }
 
 /**
- * Job status enum matching database schema
+ * Job status enum matching database schema and AWS Bedrock ModelInvocationJobStatus
+ * Maps to all possible statuses from AWS Bedrock batch inference jobs
  */
-export type JobStatus = 'queued' | 'in-process' | 'completed' | 'failed';
+export type JobStatus = 
+  | 'queued'              // SUBMITTED - Job has been submitted
+  | 'scheduled'           // SCHEDULED - Job is scheduled to run
+  | 'validating'          // VALIDATING - Job input is being validated
+  | 'in-process'          // IN_PROGRESS - Job is currently processing
+  | 'partially-completed' // PARTIALLY_COMPLETED - Job completed with some failures
+  | 'completed'           // COMPLETED - Job completed successfully
+  | 'expired'             // EXPIRED - Job expired before completion
+  | 'stopping'            // STOPPING - Job is being stopped
+  | 'stopped'             // STOPPED - Job was stopped
+  | 'failed';             // FAILED - Job failed
 
 /**
  * Job type enum matching database schema

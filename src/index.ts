@@ -301,6 +301,7 @@ export class BedrockQueue extends EventEmitter {
 
   /**
    * Get job results from S3
+   * Results are available for 'completed' and 'partially-completed' statuses
    */
   async getJobResults(jobId: string): Promise<TaskResult[]> {
     try {
@@ -309,8 +310,12 @@ export class BedrockQueue extends EventEmitter {
         throw new Error(`Job ${jobId} not found`);
       }
 
-      if (job.status !== 'completed') {
-        throw new Error(`Job ${jobId} is not completed. Current status: ${job.status}`);
+      // Results are available for both completed and partially-completed statuses
+      if (job.status !== 'completed' && job.status !== 'partially-completed') {
+        throw new Error(
+          `Job ${jobId} does not have results available. Current status: ${job.status}. ` +
+          `Results are only available for 'completed' or 'partially-completed' statuses.`
+        );
       }
 
       if (!job.s3OutputUri) {
@@ -329,7 +334,9 @@ export class BedrockQueue extends EventEmitter {
   }
 
   /**
-   * Wait for job to complete
+   * Wait for job to reach a terminal state
+   * Terminal states: completed, partially-completed, failed, expired, stopped
+   * Returns job result with results if status is completed or partially-completed
    */
   async awaitJob(jobId: string): Promise<JobResult> {
     try {
@@ -342,7 +349,7 @@ export class BedrockQueue extends EventEmitter {
         throw new Error(`Job ${jobId} has no jobArn`);
       }
 
-      // Wait for completion
+      // Wait for job to reach a terminal state
       const status = await this.jobTracker.waitForJobCompletion(jobId, job.jobArn);
 
       // Get updated job record
@@ -351,9 +358,10 @@ export class BedrockQueue extends EventEmitter {
         throw new Error(`Job ${jobId} not found after completion`);
       }
 
-      // Get results if completed
+      // Get results if job completed successfully (completed or partially-completed)
+      // Both statuses have results available, though partially-completed may have some failures
       let results: TaskResult[] | undefined;
-      if (status === 'completed') {
+      if (status === 'completed' || status === 'partially-completed') {
         try {
           results = await this.getJobResults(jobId);
         } catch (error) {
