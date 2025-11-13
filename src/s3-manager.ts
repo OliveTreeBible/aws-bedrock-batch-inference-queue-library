@@ -5,6 +5,7 @@ import {
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3';
 import { S3Config } from './types';
+import { resolveRetrySettings } from './retry';
 
 /**
  * S3Manager handles all S3 operations for input and output files
@@ -15,12 +16,18 @@ export class S3Manager {
 
   constructor(config: S3Config) {
     this.config = config;
+    const { retryMode, maxAttempts } = resolveRetrySettings({
+      retryMode: config.retryMode,
+      maxAttempts: config.maxAttempts,
+    });
     this.s3Client = new S3Client({
       region: config.region,
       credentials: {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
+      retryMode,
+      maxAttempts,
     });
   }
 

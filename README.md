@@ -10,6 +10,7 @@ A TypeScript library for queuing and processing LLM tasks via AWS Bedrock batch 
 - **Result Retrieval**: Easy retrieval of batch inference results from S3
 - **Polling Support**: Automatic polling with manual override options
 - **Multi-Model Support**: Configurable for any AWS Bedrock model (Claude, Titan, etc.)
+- **Graceful Retry Handling**: Built-in exponential backoff (with jitter) for AWS SDK calls
 
 ## Installation
 
@@ -75,11 +76,55 @@ const queue = new BedrockQueue({
   // Optional: Polling Configuration
   pollIntervalMs: 30000, // Default: 30 seconds
   enableAutoPolling: true, // Default: true
+
+  // Optional: Retry Configuration
+  retryMode: 'adaptive', // Default: adaptive; falls back to AWS defaults when omitted
+  maxAttempts: 6, // Default: AWS SDK setting (typically 3)
+
+  // Optional: Throttling Backoff (library-level)
+  throttleBackoff: {
+    maxRetries: 5, // Additional retries after SDK retries are exhausted
+    baseDelayMs: 1000, // Initial wait before retrying throttled calls
+    maxDelayMs: 30000, // Cap delay growth for long-running throttles
+    multiplier: 2, // Exponential growth factor
+    jitterRatio: 0.25, // +/- jitter applied to each delay
+  },
 });
 
 // Initialize the queue (test database connection)
 await queue.initialize();
 ```
+
+### Retry Behavior
+
+The library configures all AWS SDK calls (Bedrock + S3) to use the SDK's exponential backoff with full jitter. By default, the queue selects the `adaptive` retry mode and lets the SDK decide the number of attempts (usually 3). You can override the behavior either through the queue config (`retryMode`, `maxAttempts`) or the standard environment variables (`AWS_RETRY_MODE`, `AWS_MAX_ATTEMPTS`). Explicit config values take precedence over environment variables.
+
+### Throttling Backoff
+
+In addition to the SDK retry strategy, the queue retries throttled operations (job submission and status polling) with an exponential backoff of its own. This protects long-running batches when AWS returns extended `ThrottlingException` responses. Use the optional `throttleBackoff` block to tune how aggressively the queue retries throttled calls. When a throttled flush ultimately fails after the configured retries, the batch is re-queued so you can try again later.
+
+### Optional Rate Limiting (Token Bucket)
+
+If you want to cap the rate of `flush()` calls before they ever hit AWS, the library exports a simple token bucket helper. It lets you define burst capacity and sustained throughput so multiple queue instances can share a coordinated limit.
+
+```typescript
+import { BedrockQueue, TokenBucket } from 'aws-bedrock-batch-inference-queue';
+
+const limiter = new TokenBucket(
+  5, // bucket capacity: allow up to 5 immediate flushes
+  2  // refill rate: 2 tokens per second (sustained rate)
+);
+
+async function flushWithRateLimit(queue: BedrockQueue) {
+  await limiter.take();  // wait until a token is available
+  return queue.flush();
+}
+
+// Remember to stop the limiter when shutting down
+process.on('SIGINT', () => limiter.stop());
+```
+
+Tune the numbers to stay comfortably below your Bedrock quotas. Pairing the limiter with the built-in throttling backoff gives you both proactive rate control and resilient recovery when AWS still answers with throttling.
 
 ## Usage
 
@@ -364,6 +409,19 @@ interface BedrockQueueConfig {
   // Optional: Polling Configuration
   pollIntervalMs?: number;
   enableAutoPolling?: boolean;
+
+  // Optional: Retry Configuration
+  retryMode?: 'standard' | 'adaptive' | 'legacy';
+  maxAttempts?: number;
+
+  // Optional: Throttling Backoff
+  throttleBackoff?: {
+    maxRetries?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+    multiplier?: number;
+    jitterRatio?: number;
+  };
 }
 ```
 

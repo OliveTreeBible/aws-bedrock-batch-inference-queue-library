@@ -34,6 +34,13 @@ export interface BedrockQueueConfig {
   // Polling Configuration
   pollIntervalMs?: number; // Default: 30000 (30 seconds)
   enableAutoPolling?: boolean; // Default: true
+
+  // Retry Configuration
+  retryMode?: 'standard' | 'adaptive' | 'legacy';
+  maxAttempts?: number;
+
+  // Throttling Backoff Configuration
+  throttleBackoff?: ThrottleBackoffConfig;
 }
 
 /**
@@ -103,9 +110,9 @@ export interface JobResult {
   jobArn?: string;
   s3InputUri?: string;
   s3OutputUri?: string;
-  errorMessage?: string;
-  results?: TaskResult[];
   recordCount?: number;
+  errorMessage?: string | undefined;
+  results?: TaskResult[];
 }
 
 /**
@@ -143,6 +150,8 @@ export interface S3Config {
   region: string;
   accessKeyId: string;
   secretAccessKey: string;
+  retryMode?: 'standard' | 'adaptive' | 'legacy';
+  maxAttempts?: number;
 }
 
 /**
@@ -153,5 +162,19 @@ export interface BedrockConfig {
   accessKeyId: string;
   secretAccessKey: string;
   roleArn: string;
+  retryMode?: 'standard' | 'adaptive' | 'legacy';
+  maxAttempts?: number;
+  throttleBackoff?: ThrottleBackoffConfig;
+}
+
+/**
+ * Throttled request backoff configuration
+ */
+export interface ThrottleBackoffConfig {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  multiplier?: number;
+  jitterRatio?: number;
 }
 

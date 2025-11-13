@@ -1,6 +1,6 @@
 {
   "name": "aws-bedrock-batch-inference-queue",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "TypeScript library for queuing and processing LLM tasks via AWS Bedrock batch inference jobs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

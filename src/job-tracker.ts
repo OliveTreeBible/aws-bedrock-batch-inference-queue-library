@@ -7,6 +7,12 @@ import { EventEmitter } from 'events';
 import { DatabaseManager } from './database-manager';
 import { S3Manager } from './s3-manager';
 import { BedrockConfig, JobStatus, JobResult } from './types';
+import {
+  resolveRetrySettings,
+  resolveThrottleBackoff,
+  retryOnThrottle,
+  ResolvedThrottleBackoff,
+} from './retry';
 
 /**
  * JobTracker handles polling AWS Bedrock job status and updating the database
@@ -18,21 +24,33 @@ export class JobTracker extends EventEmitter {
   private pollIntervalMs: number;
   private enableAutoPolling: boolean;
   private pollingIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private throttleBackoff: ResolvedThrottleBackoff;
 
   constructor(
     bedrockConfig: BedrockConfig,
     databaseManager: DatabaseManager,
     s3Manager: S3Manager,
     pollIntervalMs: number = 30000,
-    enableAutoPolling: boolean = true
+    enableAutoPolling: boolean = true,
+    throttleBackoff?: ResolvedThrottleBackoff
   ) {
     super();
+    this.throttleBackoff =
+      throttleBackoff ??
+      resolveThrottleBackoff(bedrockConfig.throttleBackoff);
+    const { retryMode, maxAttempts } = resolveRetrySettings({
+      retryMode: bedrockConfig.retryMode,
+      maxAttempts: bedrockConfig.maxAttempts,
+    });
+
     this.bedrockClient = new BedrockClient({
       region: bedrockConfig.region,
       credentials: {
         accessKeyId: bedrockConfig.accessKeyId,
         secretAccessKey: bedrockConfig.secretAccessKey,
       },
+      retryMode,
+      maxAttempts,
     });
     this.databaseManager = databaseManager;
     this.s3Manager = s3Manager;
@@ -193,7 +211,10 @@ export class JobTracker extends EventEmitter {
    */
   async pollJobStatus(jobId: string, jobArn: string): Promise<JobStatus> {
     try {
-      const { status, outputS3Uri, failureMessage } = await this.checkJobStatus(jobArn);
+      const { status, outputS3Uri, failureMessage } = await retryOnThrottle(
+        () => this.checkJobStatus(jobArn),
+        { backoff: this.throttleBackoff }
+      );
       await this.updateJobStatus(jobId, jobArn, status, outputS3Uri, failureMessage);
       return status;
     } catch (error: any) {

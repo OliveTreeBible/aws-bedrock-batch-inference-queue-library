@@ -24,6 +24,13 @@ import {
   validateBatchSize,
   BEDROCK_LIMITS,
 } from './utils';
+import {
+  resolveRetrySettings,
+  resolveThrottleBackoff,
+  retryOnThrottle,
+  ResolvedThrottleBackoff,
+  isThrottlingError,
+} from './retry';
 
 /**
  * BedrockQueue - Main class for queuing and processing LLM tasks via AWS Bedrock batch inference
@@ -39,6 +46,7 @@ export class BedrockQueue extends EventEmitter {
   private maxBatchSize: number;
   private maxFileSizeBytes: number;
   private maxJobSizeBytes: number;
+  private throttleBackoff: ResolvedThrottleBackoff;
 
   constructor(config: BedrockQueueConfig) {
     super();
@@ -72,6 +80,11 @@ export class BedrockQueue extends EventEmitter {
     this.databaseManager = new DatabaseManager(dbConfig);
 
     // Initialize S3 manager
+    const retrySettings = resolveRetrySettings({
+      retryMode: config.retryMode,
+      maxAttempts: config.maxAttempts,
+    });
+    this.throttleBackoff = resolveThrottleBackoff(config.throttleBackoff);
     const s3Config: S3Config = {
       inputBucket: config.s3InputBucket,
       inputPrefix: config.s3InputPrefix,
@@ -80,6 +93,8 @@ export class BedrockQueue extends EventEmitter {
       region: config.region,
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
+      retryMode: retrySettings.retryMode,
+      maxAttempts: retrySettings.maxAttempts,
     };
     this.s3Manager = new S3Manager(s3Config);
 
@@ -89,6 +104,9 @@ export class BedrockQueue extends EventEmitter {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
       roleArn: config.roleArn,
+      retryMode: retrySettings.retryMode,
+      maxAttempts: retrySettings.maxAttempts,
+      throttleBackoff: config.throttleBackoff,
     };
     this.bedrockClient = new BedrockClient({
       region: config.region,
@@ -96,6 +114,8 @@ export class BedrockQueue extends EventEmitter {
         accessKeyId: config.accessKeyId,
         secretAccessKey: config.secretAccessKey,
       },
+      retryMode: retrySettings.retryMode,
+      maxAttempts: retrySettings.maxAttempts,
     });
 
     // Initialize job tracker
@@ -104,7 +124,8 @@ export class BedrockQueue extends EventEmitter {
       this.databaseManager,
       this.s3Manager,
       config.pollIntervalMs ?? 30000,
-      config.enableAutoPolling ?? true
+      config.enableAutoPolling ?? true,
+      this.throttleBackoff
     );
 
     // Forward job tracker events
@@ -193,22 +214,24 @@ export class BedrockQueue extends EventEmitter {
       throw new Error('Cannot flush empty queue');
     }
 
+    const tasksToProcess = [...this.queue];
+    let queueCleared = false;
     try {
       // Generate job ID
       const jobId = generateUUID();
 
       // Validate batch size
-      const estimatedSize = estimateBatchSize(this.queue);
-      const validation = validateBatchSize(this.queue.length, estimatedSize);
+      const estimatedSize = estimateBatchSize(tasksToProcess);
+      const validation = validateBatchSize(tasksToProcess.length, estimatedSize);
 
       if (!validation.isValid) {
         throw new Error(validation.error);
       }
 
       // Convert tasks to JSONL
-      const jsonlContent = tasksToJSONL(this.queue);
-      const tasksToProcess = [...this.queue];
+      const jsonlContent = tasksToJSONL(tasksToProcess);
       this.queue = []; // Clear queue
+      queueCleared = true;
 
       // Upload to S3
       const s3InputUri = await this.s3Manager.uploadInputFile(jobId, jsonlContent);
@@ -233,7 +256,10 @@ export class BedrockQueue extends EventEmitter {
         clientRequestToken: jobId, // Use jobId as client request token for idempotency
       });
 
-      const response = await this.bedrockClient.send(command);
+      const response = await retryOnThrottle(
+        () => this.bedrockClient.send(command),
+        { backoff: this.throttleBackoff }
+      );
       const jobArn = response.jobArn;
 
       if (!jobArn) {
@@ -263,6 +289,9 @@ export class BedrockQueue extends EventEmitter {
 
       return jobId;
     } catch (error: any) {
+      if (queueCleared && tasksToProcess.length > 0 && isThrottlingError(error)) {
+        this.queue.unshift(...tasksToProcess);
+      }
       this.emit('error', error);
       throw error;
     }
@@ -423,4 +452,5 @@ export * from './types';
 export { DatabaseManager } from './database-manager';
 export { S3Manager } from './s3-manager';
 export { JobTracker } from './job-tracker';
+export { TokenBucket } from './token-bucket';
 
